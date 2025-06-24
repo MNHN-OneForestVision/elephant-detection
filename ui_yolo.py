@@ -5,6 +5,140 @@ from pathlib import Path
 from datetime import datetime
 from ultralytics import YOLO
 
+try:
+    from PIL import Image, ImageTk
+
+    PIL_AVAILABLE = True
+except ImportError:
+    PIL_AVAILABLE = False
+import cv2
+import threading
+
+
+class MediaViewer:
+    def __init__(self, parent):
+        self.parent = parent
+        self.viewer_window = None
+        self.current_image = None
+        self.video_cap = None
+        self.video_thread = None
+        self.video_playing = False
+        self.video_paused = False
+
+    def show_image(self, image_path):
+        if not PIL_AVAILABLE:
+            messagebox.showerror("Erreur",
+                                 "PIL/Pillow n'est pas installé. Veuillez installer Pillow pour visualiser les images.")
+            return
+
+        try:
+            if self.viewer_window is None or not self.viewer_window.winfo_exists():
+                self.create_viewer_window()
+            image = Image.open(image_path)
+            max_width, max_height = 800, 600
+            image.thumbnail((max_width, max_height), Image.Resampling.LANCZOS)
+            self.current_image = ImageTk.PhotoImage(image)
+            self.image_label.configure(image=self.current_image)
+            self.viewer_window.title(f"Visualiseur - {os.path.basename(image_path)}")
+            self.video_controls.pack_forget()
+            self.image_label.pack(expand=True, fill=tk.BOTH, padx=10, pady=10)
+
+        except Exception as e:
+            messagebox.showerror("Erreur", f"Impossible d'afficher l'image: {str(e)}")
+
+    def show_video(self, video_path):
+        try:
+            if self.viewer_window is None or not self.viewer_window.winfo_exists():
+                self.create_viewer_window()
+            self.stop_video()
+            self.video_cap = cv2.VideoCapture(video_path)
+            if not self.video_cap.isOpened():
+                messagebox.showerror("Erreur", "Impossible d'ouvrir la vidéo")
+                return
+            self.fps = self.video_cap.get(cv2.CAP_PROP_FPS)
+            self.total_frames = int(self.video_cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            self.viewer_window.title(f"Visualiseur - {os.path.basename(video_path)}")
+            self.image_label.pack_forget()
+            self.video_controls.pack(fill=tk.X, padx=10, pady=5)
+            if not hasattr(self, 'video_label'):
+                self.video_label = tk.Label(self.viewer_window)
+            self.video_label.pack(expand=True, fill=tk.BOTH, padx=10, pady=10)
+            self.video_playing = True
+            self.video_paused = False
+            self.play_video()
+
+        except Exception as e:
+            messagebox.showerror("Erreur", f"Impossible d'afficher la vidéo: {str(e)}")
+
+    def create_viewer_window(self):
+        self.viewer_window = tk.Toplevel(self.parent)
+        self.viewer_window.title("Visualiseur de Médias")
+        self.viewer_window.geometry("900x700")
+        self.viewer_window.protocol("WM_DELETE_WINDOW", self.close_viewer)
+        self.image_label = tk.Label(self.viewer_window)
+        self.video_controls = ttk.Frame(self.viewer_window)
+
+        ttk.Button(self.video_controls, text="▶ Play",
+                   command=self.toggle_video).pack(side=tk.LEFT, padx=5)
+        ttk.Button(self.video_controls, text="⏹ Stop",
+                   command=self.stop_video).pack(side=tk.LEFT, padx=5)
+
+        self.video_progress = ttk.Progressbar(self.video_controls, length=300)
+        self.video_progress.pack(side=tk.LEFT, padx=10)
+
+    def play_video(self):
+        if not self.video_playing or self.video_cap is None:
+            return
+
+        if not self.video_paused:
+            ret, frame = self.video_cap.read()
+            if ret:
+                height, width = frame.shape[:2]
+                max_width, max_height = 800, 600
+
+                if width > max_width or height > max_height:
+                    ratio = min(max_width / width, max_height / height)
+                    new_width = int(width * ratio)
+                    new_height = int(height * ratio)
+                    frame = cv2.resize(frame, (new_width, new_height))
+
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                image = Image.fromarray(frame_rgb)
+                photo = ImageTk.PhotoImage(image)
+
+                if hasattr(self, 'video_label'):
+                    self.video_label.configure(image=photo)
+                    self.video_label.image = photo
+
+                current_frame = self.video_cap.get(cv2.CAP_PROP_POS_FRAMES)
+                progress = (current_frame / self.total_frames) * 100
+                self.video_progress['value'] = progress
+
+                delay = int(1000 / self.fps) if self.fps > 0 else 33
+                self.viewer_window.after(delay, self.play_video)
+            else:
+                self.video_cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                self.play_video()
+        else:
+            self.viewer_window.after(100, self.play_video)
+
+    def toggle_video(self):
+        self.video_paused = not self.video_paused
+
+    def stop_video(self):
+        self.video_playing = False
+        self.video_paused = False
+        if self.video_cap:
+            self.video_cap.release()
+            self.video_cap = None
+
+    def close_viewer(self):
+        self.stop_video()
+        if self.viewer_window:
+            self.viewer_window.destroy()
+            self.viewer_window = None
+
+
 class YOLOInterface:
     def __init__(self, root):
         self.processing = None
@@ -12,7 +146,6 @@ class YOLOInterface:
         self.root.title("YOLO - Interface de Détection et Segmentation")
         self.root.geometry("1000x700")
 
-        # Variables
         self.model_path = tk.StringVar()
         self.confidence = tk.DoubleVar(value=0.80)
         self.input_files = []
@@ -22,14 +155,13 @@ class YOLOInterface:
         self.model = None
         self.input_type = None
 
+        self.media_viewer = MediaViewer(self.root)
         self.setup_ui()
 
     def setup_ui(self):
-        # Frame principal avec scrollbar
         main_frame = ttk.Frame(self.root)
         main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
-        # Configuration du modèle
         model_frame = ttk.LabelFrame(main_frame, text="Configuration du Modèle", padding=10)
         model_frame.pack(fill=tk.X, pady=(0, 10))
 
@@ -48,7 +180,6 @@ class YOLOInterface:
         confidence_entry.bind('<Return>', self.update_confidence_from_entry)
         confidence_entry.bind('<FocusOut>', self.update_confidence_from_entry)
 
-        # Frame pour les fichiers d'entrée
         input_frame = ttk.LabelFrame(main_frame, text="Fichiers d'Entrée", padding=10)
         input_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
 
@@ -59,26 +190,30 @@ class YOLOInterface:
                    command=self.select_images).pack(side=tk.LEFT, padx=5)
         ttk.Button(buttons_frame, text="Sélectionner Vidéos",
                    command=self.select_videos).pack(side=tk.LEFT, padx=5)
+        ttk.Button(buttons_frame, text="Visualiser",
+                   command=self.preview_selected_file).pack(side=tk.LEFT, padx=5)
         ttk.Button(buttons_frame, text="Effacer",
                    command=self.clear_files).pack(side=tk.LEFT, padx=5)
 
-        # Liste des fichiers sélectionnés
-        self.files_listbox = tk.Listbox(input_frame, height=6)
-        scrollbar = ttk.Scrollbar(input_frame, orient=tk.VERTICAL)
+        files_frame = ttk.Frame(input_frame)
+        files_frame.pack(fill=tk.BOTH, expand=True)
+
+        self.files_listbox = tk.Listbox(files_frame, height=6)
+        scrollbar = ttk.Scrollbar(files_frame, orient=tk.VERTICAL)
         self.files_listbox.config(yscrollcommand=scrollbar.set)
         scrollbar.config(command=self.files_listbox.yview)
 
         self.files_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
-        # Options de traitement
+        self.files_listbox.bind('<Double-Button-1>', self.on_file_double_click)
+
         options_frame = ttk.LabelFrame(main_frame, text="Options de Traitement", padding=10)
         options_frame.pack(fill=tk.X, pady=(0, 10))
 
         ttk.Checkbutton(options_frame, text="Activer le tracking (vidéos uniquement)",
                         variable=self.tracking_enabled).pack(anchor=tk.W, pady=2)
 
-        # Variables pour les nouvelles options
         self.show_results = tk.BooleanVar(value=False)
         ttk.Checkbutton(options_frame, text="Afficher les résultats",
                         variable=self.show_results).pack(anchor=tk.W, pady=2)
@@ -90,7 +225,6 @@ class YOLOInterface:
         self.output_container = ttk.Frame(options_frame)
         self.output_container.pack(fill=tk.X)
 
-        # Configuration de sortie (LabelFrame dans le conteneur, non affiché au départ)
         self.output_frame = ttk.LabelFrame(self.output_container, text="Configuration de Sortie", padding=10)
 
         ttk.Label(self.output_frame, text="Dossier de sortie:").grid(row=0, column=0, sticky=tk.W, pady=5)
@@ -99,28 +233,58 @@ class YOLOInterface:
                                                                                          pady=5)
         ttk.Label(self.output_frame, text="Nom du sous-dossier:").grid(row=1, column=0, sticky=tk.W, pady=5)
         ttk.Entry(self.output_frame, textvariable=self.name, width=30).grid(row=1, column=1, sticky=tk.W,
-                                                                                      padx=5, pady=5)
-        # Boutons de contrôle
+                                                                            padx=5, pady=5)
         control_frame = ttk.Frame(main_frame)
         control_frame.pack(fill=tk.X, pady=(0, 10))
 
         ttk.Button(control_frame, text="Lancer Traitement",
                    command=self.start_processing).pack(side=tk.LEFT, padx=5)
 
-        # Barre de progression
         self.progress_var = tk.DoubleVar()
         self.progress_bar = ttk.Progressbar(main_frame, variable=self.progress_var, maximum=100)
         self.progress_bar.pack(fill=tk.X, pady=(0, 10))
 
-        # Zone de log
         log_frame = ttk.LabelFrame(main_frame, text="Logs", padding=10)
         log_frame.pack(fill=tk.BOTH, expand=True)
 
         self.log_text = scrolledtext.ScrolledText(log_frame, height=8)
         self.log_text.pack(fill=tk.BOTH, expand=True)
 
-        # Variables de contrôle
         self.processing = False
+
+    def on_file_double_click(self, event):
+        self.preview_selected_file()
+
+    def preview_selected_file(self):
+        selection = self.files_listbox.curselection()
+        if not selection:
+            messagebox.showwarning("Aucune sélection", "Veuillez sélectionner un fichier à prévisualiser")
+            return
+
+        selected_index = selection[0]
+        if selected_index < len(self.input_files):
+            file_path = self.input_files[selected_index]
+            self.preview_file(file_path)
+
+    def preview_file(self, file_path):
+        if not os.path.exists(file_path):
+            messagebox.showerror("Erreur", "Le fichier n'existe pas")
+            return
+
+        file_ext = Path(file_path).suffix.lower()
+
+        image_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif'}
+        video_extensions = {'.mp4', '.avi', '.mov', '.mkv', '.wmv', '.flv'}
+
+        if file_ext in image_extensions:
+            self.media_viewer.show_image(file_path)
+            self.log_message(f"Prévisualisation de l'image: {os.path.basename(file_path)}")
+        elif file_ext in video_extensions:
+            self.media_viewer.show_video(file_path)
+            self.log_message(f"Prévisualisation de la vidéo: {os.path.basename(file_path)}")
+        else:
+            messagebox.showwarning("Format non supporté",
+                                   f"Le format {file_ext} n'est pas supporté pour la prévisualisation")
 
     def toggle_output_frame(self):
         if self.save_results.get():
@@ -129,20 +293,17 @@ class YOLOInterface:
             self.output_frame.pack_forget()
 
     def log_message(self, message):
-        """Ajoute un message dans la zone de log"""
         timestamp = datetime.now().strftime("%H:%M:%S")
         self.log_text.insert(tk.END, f"[{timestamp}] {message}\n")
         self.log_text.see(tk.END)
         self.root.update_idletasks()
 
     def browse_model(self):
-        """Sélectionne le fichier de modèle et le charge automatiquement"""
         filename = filedialog.askopenfilename(
             title="Sélectionner le modèle YOLO",
             filetypes=[("Modèles PyTorch", "*.pt"), ("Tous les fichiers", "*.*")]
         )
         if filename:
-            # Vérifier l'extension
             if not filename.lower().endswith('.pt'):
                 messagebox.showerror("Erreur de Format",
                                      "Le fichier sélectionné n'est pas un modèle valide (.pt)")
@@ -152,23 +313,19 @@ class YOLOInterface:
             self.load_model_automatically()
 
     def update_confidence_from_entry(self, event=None):
-        """Met à jour la confiance depuis la zone de saisie"""
         try:
             value = float(self.confidence.get())
             if 0.0 <= value <= 1.0:
-                # La valeur est déjà mise à jour par la variable liée
                 pass
             else:
                 messagebox.showwarning("Valeur Invalide",
                                        "La confiance doit être entre 0.0 et 1.0")
-                self.confidence.set(0.25)  # Valeur par défaut
+                self.confidence.set(0.80)
         except ValueError:
             messagebox.showwarning("Valeur Invalide",
                                    "Veuillez entrer une valeur numérique valide")
-            self.confidence.set(0.25)  # Valeur par défaut
-
+            self.confidence.set(0.80)
     def load_model_automatically(self):
-        """Charge automatiquement le modèle sélectionné"""
         if not self.model_path.get():
             return
 
@@ -181,11 +338,9 @@ class YOLOInterface:
             messagebox.showerror("Erreur", f"Impossible de charger le modèle: {str(e)}")
 
     def select_videos(self):
-        """Sélectionne des vidéos avec vérification multi-vidéos"""
-
         if self.input_type == "image":
             messagebox.showwarning("Type de fichier",
-                                   "Vous avez déjà sélectionné des vidéos. Veuillez effacer la liste avant de sélectionner des images.")
+                                   "Vous avez déjà sélectionné des images. Veuillez effacer la liste avant de sélectionner des vidéos.")
             return
 
         files = filedialog.askopenfilenames(
@@ -201,7 +356,6 @@ class YOLOInterface:
             self.add_files(files)
 
     def count_video_files(self):
-        """Compte le nombre de vidéos dans la liste actuelle"""
         video_extensions = {'.mp4', '.avi', '.mov', '.mkv', '.wmv', '.flv', '.MP4', '.AVI'}
         count = 0
         for file_path in self.input_files:
@@ -209,15 +363,12 @@ class YOLOInterface:
                 count += 1
         return count
 
-
     def browse_output(self):
-        """Sélectionne le dossier de sortie"""
         folder = filedialog.askdirectory(title="Sélectionner le dossier de sortie")
         if folder:
             self.output_folder.set(folder)
 
     def select_images(self):
-        """Sélectionne des images"""
         if self.input_type == "video":
             messagebox.showwarning("Type de fichier",
                                    "Vous avez déjà sélectionné des vidéos. Veuillez effacer la liste avant de sélectionner des images.")
@@ -234,16 +385,13 @@ class YOLOInterface:
             self.input_type = "image"
             self.add_files(files)
 
-
     def select_folder(self):
-        """Sélectionne un dossier et ajoute tous les fichiers image/vidéo"""
         folder = filedialog.askdirectory(title="Sélectionner un dossier")
         if folder:
             files = self.get_all_media_files(folder)
             self.add_files(files)
 
     def get_all_media_files(self, folder):
-        """Récupère tous les fichiers média d'un dossier"""
         extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.tif',
                       '.mp4', '.avi', '.mov', '.mkv', '.wmv', '.flv'}
         files = []
@@ -254,21 +402,17 @@ class YOLOInterface:
         return files
 
     def add_files(self, files):
-        """Ajoute des fichiers à la liste"""
         for file in files:
             if file not in self.input_files:
                 self.input_files.append(file)
                 self.files_listbox.insert(tk.END, os.path.basename(file))
 
     def clear_files(self):
-        """Efface la liste des fichiers"""
         self.input_files.clear()
         self.files_listbox.delete(0, tk.END)
-
-        # Supprimer les méthodes liées au chargement manuel et dossier
+        self.input_type = None
 
     def get_processing_options(self):
-        """Retourne les options de traitement pour le backend"""
         return {
             'model_path': self.model_path.get(),
             'confidence': self.confidence.get(),
@@ -282,16 +426,13 @@ class YOLOInterface:
         }
 
     def update_progress(self, value):
-        """Met à jour la barre de progression (interface pour backend)"""
         self.progress_var.set(value)
         self.root.update_idletasks()
 
     def get_log_callback(self):
-        """Retourne la fonction de log pour le backend"""
         return self.log_message
 
     def validate_inputs(self):
-        """Valide les entrées avant le traitement"""
         if not self.model_path.get():
             messagebox.showerror("Erreur", "Veuillez sélectionner un modèle")
             return False
@@ -312,7 +453,6 @@ class YOLOInterface:
         return True
 
     def start_processing(self):
-        """Démarre le traitement en arrière-plan"""
         if not self.validate_inputs():
             return
 
@@ -349,17 +489,18 @@ class YOLOInterface:
     def analyze_multiple_video(self, options):
         print(f'hello')
 
-    def analyse(self,options):
+    def analyse(self, options):
         self.log_message('Debut de l\'analyse')
         print(options)
         if options['save_results'] is True:
-            self.model(options['input_files'], show=options['show_results'], conf=options['confidence'], save=options['save_results'], name=options['name'], project=options['output_folder'])
-            self.log_message(f'Sauvegarde de l\'analyse à : {options["output_folder"]}/{options["name"] if options["name"] else "predict"}')
+            self.model(options['input_files'], show=options['show_results'], conf=options['confidence'],
+                       save=options['save_results'], name=options['name'], project=options['output_folder'])
+            self.log_message(
+                f'Sauvegarde de l\'analyse à : {options["output_folder"]}/{options["name"] if options["name"] else "predict"}')
         else:
             self.model(options['input_files'], show=options['show_results'], conf=options['confidence'])
         self.log_message('Fin de l\'analyse')
         self.processing = False
-
 
 
 def main():

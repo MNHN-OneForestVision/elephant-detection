@@ -1,2 +1,4 @@
 ultralytics
 tk
+pillow
+opencv-python

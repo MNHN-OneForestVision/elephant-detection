@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  yolo-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - /media/avalanche/CYP_EXT/ELEPHANTS:/data
+      - /tmp/.X11-unix:/tmp/.X11-unix
+    environment:
+      - DISPLAY=${DISPLAY}
+    stdin_open: true
+    tty: true
