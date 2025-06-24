@@ -24,6 +24,8 @@ class MediaViewer:
         self.video_thread = None
         self.video_playing = False
         self.video_paused = False
+        self.video_after_id = None
+        self.video_label = None
 
     def show_image(self, image_path):
         if not PIL_AVAILABLE:
@@ -32,8 +34,11 @@ class MediaViewer:
             return
 
         try:
+            self.stop_video()
+
             if self.viewer_window is None or not self.viewer_window.winfo_exists():
                 self.create_viewer_window()
+
             image = Image.open(image_path)
             max_width, max_height = 800, 600
             image.thumbnail((max_width, max_height), Image.Resampling.LANCZOS)
@@ -41,6 +46,8 @@ class MediaViewer:
             self.image_label.configure(image=self.current_image)
             self.viewer_window.title(f"Visualiseur - {os.path.basename(image_path)}")
             self.video_controls.pack_forget()
+            if self.video_label and self.video_label.winfo_exists():
+                self.video_label.pack_forget()
             self.image_label.pack(expand=True, fill=tk.BOTH, padx=10, pady=10)
 
         except Exception as e:
@@ -55,14 +62,18 @@ class MediaViewer:
             if not self.video_cap.isOpened():
                 messagebox.showerror("Erreur", "Impossible d'ouvrir la vidéo")
                 return
+
             self.fps = self.video_cap.get(cv2.CAP_PROP_FPS)
             self.total_frames = int(self.video_cap.get(cv2.CAP_PROP_FRAME_COUNT))
             self.viewer_window.title(f"Visualiseur - {os.path.basename(video_path)}")
             self.image_label.pack_forget()
+            if self.video_label and self.video_label.winfo_exists():
+                self.video_label.destroy()
+
+            self.video_label = tk.Label(self.viewer_window)
             self.video_controls.pack(fill=tk.X, padx=10, pady=5)
-            if not hasattr(self, 'video_label'):
-                self.video_label = tk.Label(self.viewer_window)
             self.video_label.pack(expand=True, fill=tk.BOTH, padx=10, pady=10)
+            self.video_progress['value'] = 0
             self.video_playing = True
             self.video_paused = False
             self.play_video()
@@ -75,13 +86,14 @@ class MediaViewer:
         self.viewer_window.title("Visualiseur de Médias")
         self.viewer_window.geometry("900x700")
         self.viewer_window.protocol("WM_DELETE_WINDOW", self.close_viewer)
+
         self.image_label = tk.Label(self.viewer_window)
         self.video_controls = ttk.Frame(self.viewer_window)
 
-        ttk.Button(self.video_controls, text="▶ Play",
-                   command=self.toggle_video).pack(side=tk.LEFT, padx=5)
-        ttk.Button(self.video_controls, text="⏹ Stop",
-                   command=self.stop_video).pack(side=tk.LEFT, padx=5)
+        self.play_button = ttk.Button(self.video_controls, text="▶ Play", command=self.toggle_video)
+        self.play_button.pack(side=tk.LEFT, padx=5)
+
+        ttk.Button(self.video_controls, text="⏹ Stop", command=self.stop_video).pack(side=tk.LEFT, padx=5)
 
         self.video_progress = ttk.Progressbar(self.video_controls, length=300)
         self.video_progress.pack(side=tk.LEFT, padx=10)
@@ -89,53 +101,93 @@ class MediaViewer:
     def play_video(self):
         if not self.video_playing or self.video_cap is None:
             return
+        if (not self.viewer_window or not self.viewer_window.winfo_exists() or
+                not self.video_label or not self.video_label.winfo_exists()):
+            self.stop_video()
+            return
 
-        if not self.video_paused:
-            ret, frame = self.video_cap.read()
-            if ret:
-                height, width = frame.shape[:2]
-                max_width, max_height = 800, 600
+        try:
+            if not self.video_paused:
+                ret, frame = self.video_cap.read()
+                if ret:
+                    height, width = frame.shape[:2]
+                    max_width, max_height = 800, 600
 
-                if width > max_width or height > max_height:
-                    ratio = min(max_width / width, max_height / height)
-                    new_width = int(width * ratio)
-                    new_height = int(height * ratio)
-                    frame = cv2.resize(frame, (new_width, new_height))
+                    if width > max_width or height > max_height:
+                        ratio = min(max_width / width, max_height / height)
+                        new_width = int(width * ratio)
+                        new_height = int(height * ratio)
+                        frame = cv2.resize(frame, (new_width, new_height))
 
-                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                image = Image.fromarray(frame_rgb)
-                photo = ImageTk.PhotoImage(image)
-
-                if hasattr(self, 'video_label'):
-                    self.video_label.configure(image=photo)
-                    self.video_label.image = photo
-
-                current_frame = self.video_cap.get(cv2.CAP_PROP_POS_FRAMES)
-                progress = (current_frame / self.total_frames) * 100
-                self.video_progress['value'] = progress
-
-                delay = int(1000 / self.fps) if self.fps > 0 else 33
-                self.viewer_window.after(delay, self.play_video)
+                    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    image = Image.fromarray(frame_rgb)
+                    photo = ImageTk.PhotoImage(image)
+                    if self.video_label and self.video_label.winfo_exists():
+                        self.video_label.configure(image=photo)
+                        self.video_label.image = photo
+                    current_frame = self.video_cap.get(cv2.CAP_PROP_POS_FRAMES)
+                    if self.total_frames > 0:
+                        progress = (current_frame / self.total_frames) * 100
+                        self.video_progress['value'] = progress
+                    delay = int(1000 / self.fps) if self.fps > 0 else 33
+                    if self.viewer_window and self.viewer_window.winfo_exists():
+                        self.video_after_id = self.viewer_window.after(delay, self.play_video)
+                else:
+                    self.video_cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                    if self.viewer_window and self.viewer_window.winfo_exists():
+                        self.video_after_id = self.viewer_window.after(100, self.play_video)
             else:
-                self.video_cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-                self.play_video()
-        else:
-            self.viewer_window.after(100, self.play_video)
+                if self.viewer_window and self.viewer_window.winfo_exists():
+                    self.video_after_id = self.viewer_window.after(100, self.play_video)
+        except tk.TclError:
+            self.stop_video()
 
     def toggle_video(self):
-        self.video_paused = not self.video_paused
+        if self.video_playing:
+            self.video_paused = not self.video_paused
+            if hasattr(self, 'play_button'):
+                if self.video_paused:
+                    self.play_button.config(text="▶ Play")
+                else:
+                    self.play_button.config(text="⏸ Pause")
 
     def stop_video(self):
         self.video_playing = False
         self.video_paused = False
+        if self.video_after_id and self.viewer_window and self.viewer_window.winfo_exists():
+            try:
+                self.viewer_window.after_cancel(self.video_after_id)
+            except tk.TclError:
+                pass
+            self.video_after_id = None
         if self.video_cap:
             self.video_cap.release()
             self.video_cap = None
+        if hasattr(self, 'video_progress'):
+            try:
+                self.video_progress['value'] = 0
+            except tk.TclError:
+                pass
+        if hasattr(self, 'play_button'):
+            try:
+                self.play_button.config(text="▶ Play")
+            except tk.TclError:
+                pass
 
     def close_viewer(self):
         self.stop_video()
+        if self.video_label:
+            try:
+                self.video_label.destroy()
+            except tk.TclError:
+                pass
+            self.video_label = None
+
         if self.viewer_window:
-            self.viewer_window.destroy()
+            try:
+                self.viewer_window.destroy()
+            except tk.TclError:
+                pass
             self.viewer_window = None
 
 
