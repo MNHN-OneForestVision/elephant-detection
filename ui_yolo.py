@@ -333,8 +333,6 @@ class YOLOInterface:
         self.log_message(f"Confiance: {options['confidence']}")
         self.log_message(f"Affichage: {'Oui' if options['show_results'] else 'Non'}")
         self.log_message(f"Sauvegarde: {'Oui' if options['save_results'] else 'Non'}")
-        if options['save_results']:
-            self.log_message(f'folder_name: {options["output_folder"]}\nname: {options["name"]}')
         if options['total_videos'] > 0:
             self.log_message(f"Tracking vidéo: {'Oui' if options['tracking_enabled'] else 'Non'}")
 
