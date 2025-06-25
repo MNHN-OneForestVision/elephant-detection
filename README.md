@@ -57,8 +57,8 @@ newgrp docker
 
 1. **Cloner le repository**
    ```bash
-   git clone <votre-repo-url>
-   cd yolo-interface
+   git clone git@github.com:MNHN-OneForestVision/elephant-detection.git
+   cd elephant-detection
    ```
 
 2. **Configurer l'affichage X11**
