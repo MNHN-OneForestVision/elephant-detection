@@ -1,235 +1,94 @@
-# YOLO Interface - Interface de Détection et Segmentation
+# Système de Reconnaissance d'Éléphants par Analyse d'Oreilles
 
-Une interface graphique moderne pour utiliser les modèles YOLO sur images et vidéos avec support Docker pour Linux.
-_Fonction pour tout type de modèle YOLO (pas uniquement pour les éléphants)._
+## Vue d'ensemble
 
-## Table des matières
+Ce projet implémente un système complet pour la détection, la segmentation et l'identification d'éléphants individuels basé sur l'analyse des caractéristiques uniques de leurs oreilles. Le système combine des techniques avancées de vision par ordinateur et d'apprentissage profond pour permettre un suivi non invasif des populations d'éléphants.
 
-- [Fonctionnalités](#fonctionnalités)
-- [Prérequis](#prérequis)
-- [Installation](#installation)
-  - [Linux (Docker recommandé)](#linux-docker-recommandé)
-  - [macOS (Environnement virtuel)](#macos-environnement-virtuel)
-  - [Windows (Environnement virtuel)](#windows-environnement-virtuel)
-- [Utilisation de l'interface](#utilisation-de-linterface)
-- [Structure du projet](#structure-du-projet)
-- [Dépannage](#dépannage)
+## Composants principaux
 
-## Fonctionnalités
+Le projet est organisé en trois composants principaux, chacun documenté en détail :
 
-- Interface graphique intuitive avec Tkinter
-- Support des modèles YOLO (.pt)
-- Traitement d'images (JPG, PNG, BMP, TIFF)
-- Traitement de vidéos (MP4, AVI, MOV, MKV, WMV, FLV)
-- Prévisualisation des médias intégrée
-- Configuration du seuil de confiance
-- Support du tracking pour les vidéos
-- Sauvegarde personnalisée des résultats
-- Logs en temps réel
-- Conteneurisation Docker (Linux uniquement)
+1. [**Interface YOLO**](./YOLO%20Interface.md) - Interface graphique pour la détection et la segmentation d'éléphants dans des images et vidéos.
+2. [**Pipeline d'identification**](./Pipeline.md) - Système de reconnaissance d'éléphants basé sur l'analyse des oreilles.
+3. [**Entraînement du modèle ViT**](./ViT%20Train.md) - Outils pour l'entraînement du modèle d'identification.
 
-## Prérequis
+## Fonctionnalités clés
 
-### Système requis
-- **Linux** : Docker et Docker Compose
-- **macOS/Windows** : Python 3.11+
-- 4GB RAM minimum
-- Carte graphique Nvidia recommandée pour de meilleures performances
+- Détection et segmentation d'éléphants dans des images et vidéos
+- Extraction automatique des régions d'oreilles (gauche et droite)
+- Génération d'embeddings vectoriels pour chaque oreille
+- Recherche rapide par similarité pour identifier des individus connus
+- Interface graphique conviviale pour l'analyse visuelle
+- Outils d'entraînement pour améliorer la précision du modèle
+
+## Architecture du système
+
+Le système fonctionne en trois étapes principales :
+
+1. **Détection** : Localisation des éléphants et segmentation des oreilles à l'aide de modèles YOLO.
+2. **Extraction de caractéristiques** : Génération d'embeddings vectoriels à partir des images d'oreilles via un modèle Vision Transformer (ViT).
+3. **Identification** : Recherche par similarité dans une base de données d'éléphants connus à l'aide de FAISS.
 
 ## Installation
 
-### Linux (Docker recommandé)
+Le projet peut être installé et exécuté de plusieurs façons, selon votre système d'exploitation :
 
-Docker simplifie l'installation en encapsulant toutes les dépendances.
+- **Linux** : Installation via Docker (recommandé)
+- **macOS/Windows** : Installation via environnement virtuel Python
 
-#### Prérequis Docker
+Pour des instructions détaillées, consultez la [documentation de l'interface YOLO](./YOLO%20Interface.md#installation).
+
+## Utilisation rapide
+
+### Interface graphique
+
 ```bash
-# Installer Docker
-sudo apt-get update
-sudo apt-get install docker.io docker-compose-plugin
-
-# Ajouter votre utilisateur au groupe docker
-sudo usermod -aG docker $USER
-newgrp docker
+# Lancer l'interface graphique
+python ui_yolo.py
 ```
 
-#### Installation et lancement
+### Pipeline d'identification
 
-1. **Cloner le repository**
-   ```bash
-   git clone git@github.com:MNHN-OneForestVision/elephant-detection.git
-   cd elephant-detection
-   ```
+```python
+from pipeline import EarRecognizerSystem
 
-2. **Configurer l'affichage X11**
-   ```bash
-   xhost +local:docker
-   ```
+# Initialiser le système
+system = EarRecognizerSystem()
 
-3. **Adapter le volume de données (optionnel)**
-   Modifier la ligne dans `docker-compose.yml` selon vos besoins :
-   ```yaml
-   volumes:
-     - /votre/dossier/de/données:/data  # Changez ce chemin mais laissez le :/data
-   ```
-
-4. **Lancer avec Docker Compose**
-   ```bash
-   docker-compose up --build
-   ```
-
-5. **L'interface s'ouvre automatiquement** 🎉
-
-#### Arrêter l'application
-```bash
-# Ctrl+C dans le terminal ou
-docker-compose down
+# Identifier un éléphant à partir d'une image
+results = system.run("path/to/elephant_image.jpg")
 ```
 
-### macOS (Environnement virtuel)
+### Entraînement du modèle
 
-#### Installation
+```python
+from vit_train import main
 
-1. **Installer Homebrew (si pas déjà installé)**
-   ```bash
-   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-   ```
-
-2. **Installer Python et les dépendances système**
-   ```bash
-   brew install python@3.11 ffmpeg
-   ```
-
-3. **Cloner le repository**
-   ```bash
-   git clone git@github.com:MNHN-OneForestVision/elephant-detection.git
-   cd elephant-detection
-   ```
-
-4. **Créer et activer l'environnement virtuel**
-   ```bash
-   python3 -m venv venv
-   source venv/bin/activate
-   ```
-
-5. **Installer les dépendances Python**
-   ```bash
-   pip install --upgrade pip
-   pip install -r requirements.txt
-   ```
-
-6. **Lancer l'application**
-   ```bash
-   python ui_yolo.py
-   ```
-
-#### Utilisation ultérieure
-```bash
-cd elephant-detection
-source venv/bin/activate  # Activer l'environnement
-python ui_yolo.py         # Lancer l'app
-deactivate               # Désactiver l'environnement (quand terminé)
+# Lancer l'entraînement avec les paramètres par défaut
+main()
 ```
-
-### Windows (Environnement virtuel)
-
-#### Installation
-
-1. **Installer Python 3.11+**
-   - Télécharger depuis [python.org](https://www.python.org/downloads/)
-   - ⚠️ **IMPORTANT** : Cocher "Add Python to PATH" lors de l'installation
-
-2. **Cloner le repository**
-   ```cmd
-   git clone git@github.com:MNHN-OneForestVision/elephant-detection.git
-   cd yolo-interface
-   ```
-
-3. **Créer et activer l'environnement virtuel**
-   ```cmd
-   python -m venv venv
-   venv\Scripts\activate
-   ```
-
-4. **Installer les dépendances Python**
-   ```cmd
-   python -m pip install --upgrade pip
-   pip install -r requirements.txt
-   ```
-
-5. **Lancer l'application**
-   ```cmd
-   python ui_yolo.py
-   ```
-
-#### Utilisation ultérieure
-```cmd
-cd elephant-detection
-venv\Scripts\activate     # Activer l'environnement
-python ui_yolo.py         # Lancer l'app
-deactivate               # Désactiver l'environnement (quand terminé)
-```
-
-## Utilisation de l'interface
-
-### 1. Configuration du modèle
-- Cliquer sur "Parcourir" pour sélectionner votre modèle YOLO (.pt)
-- Ajuster le seuil de confiance avec le curseur ou en écrivant (0.0 - 1.0)
-
-### 2. Sélection des fichiers
-**Le modèle analyse soit des images soit des vidéos mais pas les 2 en même temps**
-- **Images** : Cliquer sur "Sélectionner Images" (JPG, PNG, BMP, TIFF)
-- **Vidéos** : Cliquer sur "Sélectionner Vidéos" (MP4, AVI, MOV, MKV, WMV, FLV)
-- **Prévisualisation** : Double-cliquer sur un fichier ou utiliser "Visualiser"
-- **Nettoyage** : "Effacer" pour vider la liste
-
-### 3. Options de traitement
-- ☑️ **Tracking** : Active le suivi d'objets pour les vidéos
-- ☑️ **Afficher les résultats** : Montre les résultats en temps réel
-- ☑️ **Sauvegarder les résultats** : 
-  - Choisir le dossier de destination
-  - Nommer le sous-dossier (optionnel)
-
-
-### 4. Visualisation
-- **Images** : Aperçu redimensionné automatiquement
-- **Vidéos** : Lecteur intégré avec contrôles (Play/Pause/Stop)
 
 ## Structure du projet
 
 ```
-yolo-interface/
-├── ui_yolo.py
-├── requirements.txt
-├── Dockerfile
-├── docker-compose.yml
-└── README.md
+elephant-detection/
+├── README.md                 # Documentation générale
+├── YOLO Interface.md         # Documentation de l'interface
+├── Pipeline.md            # Documentation du pipeline d'identification
+├── ViT Train.md           # Documentation de l'entraînement
+├── ui_yolo.py                # Interface graphique YOLO
+├── pipeline.py               # Système d'identification
+├── vit_train.py              # Entraînement du modèle ViT
+├── lib.py                    # Fonctions utilitaires
+├── requirements.txt          # Dépendances Python
+├── models/                   # Modèles pré-entraînés
+│   ├── detection/            # Modèles de détection
+│   ├── segmentation/         # Modèles de segmentation
+│   └── identification/       # Modèles d'identification
+├── db/                       # Base de données d'embeddings
+└── docker-compose.yml        # Configuration Docker
 ```
 
-## Dépannage
+## Licence
 
-### Erreurs communes
-**"Impossible d'ouvrir la vidéo"**
-- Vérifier que FFmpeg est correctement installé
-- Tester avec un format vidéo différent (MP4 recommandé)
-- Vérifier que le fichier n'est pas corrompu
-
-**"Modèle YOLO ne se charge pas"**
-- Vérifier que le fichier .pt est valide
-- Vérifier les permissions du fichier
-
-### Problèmes spécifiques
-
-**Linux Docker : "Cannot connect to display"**
-```bash
-xhost +local:docker
-export DISPLAY=:0
-```
-
-### Performance et optimisation
-
-**Pour de meilleures performances** :
-- Utiliser un GPU Nvidia compatible CUDA (Linux/Windows)
-- Ajuster le seuil de confiance selon vos besoins
-- Fermer d'autres applications gourmandes en ressources
-
+Ce projet est distribué sous licence Attribution-NonCommercial-ShareAlike 4.0 International. Voir le fichier [LICENSE](./LICENSE) pour plus de détails.

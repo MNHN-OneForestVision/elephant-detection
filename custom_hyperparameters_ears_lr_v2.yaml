@@ -1,0 +1,9 @@
+task: segment
+mode: train
+data: /home/avalanche/MNHN/mnhm-yolo-elephant-head-recognizer/ears_seg_lr_v2.yaml
+model: /home/avalanche/MNHN/mnhm-yolo-elephant-head-recognizer/seg_ears_lr_v1.pt
+epochs: 1200
+hsv_h: 0.03
+hsv_s: 1.0
+hsv_v: 0.8
+fliplr: 0.0
